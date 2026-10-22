@@ -1,0 +1,6 @@
+# SQLite DB 및 녹음 파일 제외
+speechlog.db
+recordings/
+*.wav
+*.m4a
+*.mp3
