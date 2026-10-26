@@ -1,60 +1,19 @@
 import os
 import re
-import json
-import sqlite3
+import shutil
 import datetime
 import tempfile
 import pandas as pd
 import streamlit as st
-import analysis  # analysis.py 모듈 임포트
-from messages import score_message, speed_message, pause_message, NOTES  # messages.py 모듈 임포트
 
-# ==========================================
-# [디렉토리 및 DB 설정]
-# ==========================================
-DB_PATH = "speechlog.db"
-RECORDING_DIR = "recordings"
+import analysis
+import db  # B학생이 제공한 db.py 모듈 임포트
+from messages import score_message, speed_message, pause_message, NOTES
 
-# 녹음 저장용 폴더 생성
-if not os.path.exists(RECORDING_DIR):
-    os.makedirs(RECORDING_DIR)
+# 1) 앱 시작 시 DB 초기화 (테이블 생성 등)
+db.init_db()
 
-# SQLite DB 초기화 (scripts, attempts)
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS scripts (
-        script_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL
-    )
-    """)
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS attempts (
-        attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_name TEXT NOT NULL,
-        script_title TEXT NOT NULL,
-        script_content TEXT NOT NULL,
-        audio_path TEXT NOT NULL,
-        score REAL,
-        syl_per_s REAL,
-        pause_count INTEGER,
-        pause_total_s REAL,
-        target_time_s REAL,
-        duration_s REAL,
-        bad_syllables_json TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# 모델 사전 로드 (앱 로딩 속도 최적화)
+# 모델 사전 워밍업
 @st.cache_resource
 def warm_up():
     analysis.load_models()
@@ -63,22 +22,23 @@ def warm_up():
 warm_up()
 
 # ==========================================
-# [Streamlit 기본 레이아웃 및 탭 구성]
+# 레이아웃 및 탭 구성
 # ==========================================
 st.set_page_config(page_title="스피치로그 (SpeechLog)", layout="centered")
 st.title("🎤 스피치로그 (SpeechLog)")
 
-tab1, tab2 = st.tabs(["🎙️ 연습 & 분석", "📈 내 기록"])
+# 4) 탭 구성
+tab1, tab2 = st.tabs(["🎙️ 연습", "📈 내 기록"])
 
 # ==========================================
-# TAB 1: 연습 & 분석
+# TAB 1: 연습
 # ==========================================
 with tab1:
     st.subheader("1. 사용자 정보 및 대본 선택")
 
     user_name = st.text_input("사용자 이름", placeholder="이름을 입력하세요 (예: 홍길동)")
 
-# 1) scripts.csv 읽어오기 (번호/ID, 제목, 내용 대응)
+    # scripts.csv에서 대본 목록 읽어오기
     script_options = {"직접 입력": ""}
     if os.path.exists("scripts.csv"):
         df_csv = None
@@ -91,18 +51,14 @@ with tab1:
 
         if df_csv is not None:
             cols = list(df_csv.columns)
-            # 열이 3개 이상일 때 (예: 번호/id, 제목/title, 내용/content)
             if len(cols) >= 3:
                 for _, r in df_csv.iterrows():
-                    # 번호(id)와 제목을 조합하여 드롭다운 표기 (예: "3. 발음규칙(구개음화)" 또는 제목만)
                     id_val = str(r[cols[0]]).strip()
                     title_val = str(r[cols[1]]).strip()
                     content_val = str(r[cols[2]]).strip()
-                    
                     display_label = f"{id_val}. {title_val}" if id_val.isdigit() else title_val
                     if content_val and content_val != "nan":
                         script_options[display_label] = content_val
-            # 열이 2개일 때 (제목, 내용)
             elif len(cols) == 2:
                 for _, r in df_csv.iterrows():
                     title_val = str(r[cols[0]]).strip()
@@ -110,7 +66,6 @@ with tab1:
                     if title_val and content_val and title_val != "nan":
                         script_options[title_val] = content_val
 
-    # CSV 파일이 없거나 유효한 대본이 없을 때만 예시 대본 추가
     if len(script_options) == 1:
         script_options["면접 대본 1"] = "안녕하십니까. 데이터사이언스학과 캡스톤디자인 6조 발표자입니다. 오늘 스피치로그 서비스를 소개하겠습니다."
         script_options["발표 대본 2"] = "한국어 낭독의 적정 속도는 초당 5음절에서 7음절 사이입니다. 또박또박 정확하게 발음하는 것이 중요합니다."
@@ -145,7 +100,6 @@ with tab1:
             st.warning("⚠️ 이름을 입력해 주세요.")
             st.stop()
             
-        # 한글 유효성 검사
         if not script_text.strip() or len(re.findall(r"[가-힣]", script_text)) == 0:
             st.warning("⚠️ 한글 대본을 입력해 주세요.")
             st.stop()
@@ -166,37 +120,22 @@ with tab1:
                 st.error(f"⚠️ {result['error']}")
                 st.stop()
 
-            # 녹음 오디오 recordings/ 폴더에 저장
+            # 2) recordings/ 폴더 생성 및 파일 복사 저장 (recordings/이름_시간.wav)
+            os.makedirs("recordings", exist_ok=True)
             timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             saved_audio_name = f"{user_name}_{timestamp_str}.wav"
-            saved_audio_path = os.path.join(RECORDING_DIR, saved_audio_name)
+            saved_audio_path = os.path.join("recordings", saved_audio_name)
             
             with open(saved_audio_path, "wb") as f:
                 f.write(audio_data.getvalue())
 
-            # DB 저장
-            bad_json = json.dumps(result.get("bad_syllables", []))
-            
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("""
-            INSERT INTO attempts (
-                user_name, script_title, script_content, audio_path,
-                score, syl_per_s, pause_count, pause_total_s,
-                target_time_s, duration_s, bad_syllables_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                user_name, script_title, script_text, saved_audio_path,
-                result.get("score"), result.get("syl_per_s"), result.get("pause_count"),
-                result.get("pause_total_s"), target_time_s, result.get("duration_s"), bad_json
-            ))
-            conn.commit()
-            conn.close()
+            # 3) 결과가 나온 직후 db.save_attempt(...) 호출로 DB 저장
+            db.save_attempt(user_name, script_title, result, saved_audio_path)
 
-            st.success("✅ 분석 완료!")
+            st.success("✅ 분석 완료 및 기록 저장 성공!")
             st.divider()
 
-            # --- 결과 화면 ---
+            # 결과 화면
             st.header(f"📊 {user_name} 님의 분석 결과")
 
             col1, col2, col3 = st.columns(3)
@@ -237,7 +176,6 @@ with tab1:
             st.subheader("🔊 음량(소리 크기) 변화 그래프")
             st.line_chart(result.get('db', []))
 
-            # 결과 하단 설명 캡션 (messages.py의 NOTES)
             st.divider()
             for note in NOTES:
                 st.caption(note)
@@ -250,96 +188,81 @@ with tab1:
 # TAB 2: 내 기록
 # ==========================================
 with tab2:
-    st.header("📈 회차별 스피치 기록 비교")
+    st.header("📈 내 기록 (회차별 스피치 분석)")
 
-    conn = sqlite3.connect(DB_PATH)
-    df_users = pd.read_sql_query("SELECT DISTINCT user_name FROM attempts", conn)
-    
-    if df_users.empty:
-        st.info("아직 저장된 연습 기록이 없습니다.")
-        conn.close()
+    user_name_search = st.text_input("조회할 사용자 이름 입력", key="search_user_input")
+
+    if not user_name_search.strip():
+        st.info("💡 사용자 이름을 입력하시면 저장된 연습 기록을 불러옵니다.")
     else:
-        user_list = df_users['user_name'].tolist()
-        search_user = st.selectbox("사용자 선택", user_list)
-
-        df_scripts = pd.read_sql_query(
-            "SELECT DISTINCT script_title FROM attempts WHERE user_name = ?", 
-            conn, params=(search_user,)
-        )
-        script_list = df_scripts['script_title'].tolist()
-        search_script = st.selectbox("대본 선택", script_list)
-
-        df_attempts = pd.read_sql_query("""
-            SELECT attempt_id, score, syl_per_s, duration_s, target_time_s, audio_path, script_content, bad_syllables_json, created_at 
-            FROM attempts 
-            WHERE user_name = ? AND script_title = ?
-            ORDER BY attempt_id ASC
-        """, conn, params=(search_user, search_script))
-
-        conn.close()
-
-        if not df_attempts.empty:
-            df_attempts['회차'] = range(1, len(df_attempts) + 1)
-
-            if len(df_attempts) >= 2:
-                last_score = df_attempts.iloc[-1]['score']
-                prev_score = df_attempts.iloc[-2]['score']
-                score_diff = round(last_score - prev_score, 1)
-
-                last_speed = df_attempts.iloc[-1]['syl_per_s']
-                prev_speed = df_attempts.iloc[-2]['syl_per_s']
-                speed_diff = round(last_speed - prev_speed, 1)
-
-                score_str = f"+{score_diff}점 상승" if score_diff >= 0 else f"{abs(score_diff)}점 하락"
-                speed_str = f"{speed_diff}음절 빨라짐" if speed_diff >= 0 else f"{abs(speed_diff)}음절 느려짐"
-
-                st.success(f"🗣️ 지난 회차보다 **발음 점수 {score_str}**, **속도 {speed_str}**했습니다.")
-
-            st.subheader("📊 발음 점수 및 속도 변화")
-            col_chart1, col_chart2 = st.columns(2)
-            with col_chart1:
-                st.markdown("**발음 점수 추이**")
-                st.line_chart(df_attempts.set_index('회차')['score'])
-
-            with col_chart2:
-                st.markdown("**말하기 속도 (음절/초) 추이**")
-                st.line_chart(df_attempts.set_index('회차')['syl_per_s'])
-
-            st.divider()
-
-            st.subheader("🔍 회차별 상세 다시보기")
-            selected_attempt_id = st.selectbox(
-                "상세보기할 회차 선택",
-                df_attempts['attempt_id'].tolist(),
-                format_func=lambda x: f"{df_attempts[df_attempts['attempt_id'] == x]['회차'].values[0]}회차 ({df_attempts[df_attempts['attempt_id'] == x]['created_at'].values[0]})"
+        # 1) B학생의 db.list_scripts(name) 호출 -> 딕셔너리 리스트가 반환됨
+        scripts_list = db.list_scripts(user_name_search)
+        
+        if not scripts_list:
+            st.warning("아직 연습 기록이 없어요")
+        else:
+            # 드롭다운에 딕셔너리 대신 'text' 글자만 예쁘게 표시되도록 format_func 설정
+            selected_script_item = st.selectbox(
+                "대본 선택",
+                scripts_list,
+                format_func=lambda item: item.get("text", str(item)) if isinstance(item, dict) else str(item)
             )
+            
+            # 2) 딕셔너리에서 script_id 숫자 값 추출 (또는 문자열인 경우 그대로 사용)
+            if isinstance(selected_script_item, dict):
+                target_script_id = selected_script_item.get("script_id")
+            else:
+                target_script_id = selected_script_item
 
-            row = df_attempts[df_attempts['attempt_id'] == selected_attempt_id].iloc[0]
+            # 3) 추출한 script_id를 get_attempts에 넘겨줌
+            rows = db.get_attempts(user_name_search, target_script_id)
+            
+            if not rows:
+                st.warning("아직 연습 기록이 없어요")
+            else:
+                # 4) pandas DataFrame 변환 및 회차(round) 부여
+                df_attempts = pd.DataFrame(rows)
+                
+                if "round" not in df_attempts.columns:
+                    df_attempts["round"] = range(1, len(df_attempts) + 1)
 
-            col_detail1, col_detail2 = st.columns(2)
-            with col_detail1:
-                st.write(f"**발음 점수:** {row['score']}점")
-                st.write(f"**말하기 속도:** {row['syl_per_s']} 음절/초")
-                st.write(f"**녹음 길 이:** {row['duration_s']}초")
-            with col_detail2:
-                if row['target_time_s'] > 0:
-                    diff_s = round(row['duration_s'] - row['target_time_s'], 1)
-                    st.write(f"**목표 시간:** {row['target_time_s']}초 (차이: {diff_s}초)")
+                # 5) 2회차 이상이면 직전 회차 대비 변화 문구 출력 (change_sentence)
+                if len(rows) >= 2:
+                    try:
+                        st.success(db.change_sentence(rows[-2], rows[-1]))
+                    except Exception:
+                        pass
 
-            if os.path.exists(row['audio_path']):
-                st.audio(row['audio_path'])
+                st.subheader("📊 회차별 변화 추이")
+                col_c1, col_c2 = st.columns(2)
+                
+                with col_c1:
+                    st.markdown("**발음 점수**")
+                    score_col = "score" if "score" in df_attempts.columns else df_attempts.columns[0]
+                    st.line_chart(df_attempts.set_index("round")[[score_col]])
+                
+                with col_c2:
+                    st.markdown("**말하기 속도 (음절/초)**")
+                    speed_col = "syl_per_s" if "syl_per_s" in df_attempts.columns else ("speed" if "speed" in df_attempts.columns else None)
+                    if speed_col:
+                        st.line_chart(df_attempts.set_index("round")[[speed_col]])
 
-            bad_indices = json.loads(row['bad_syllables_json']) if row['bad_syllables_json'] else []
-            marked_data = analysis.mark_script(row['script_content'], bad_indices)
+                st.divider()
 
-            highlighted_script = ""
-            for char, is_bad in marked_data:
-                if is_bad:
-                    highlighted_script += f"<span style='color: red; font-weight: bold; text-decoration: underline;'>{char}</span>"
+                # 6) 회차별 상세보기 및 녹음 다시듣기
+                st.subheader("🔍 회차별 상세 보기 및 다시 듣기")
+                
+                attempt_labels = [f"{r.get('round', i+1)}회차 ({r.get('created_at', '')})" for i, r in enumerate(rows)]
+                selected_idx = st.selectbox("회차 선택", range(len(rows)), format_func=lambda i: attempt_labels[i])
+                
+                selected_row = rows[selected_idx]
+                
+                score_val = selected_row.get("score", 0)
+                speed_val = selected_row.get("syl_per_s", selected_row.get("speed", 0))
+                st.write(f"**선택 회차 발음 점수:** {score_val}점 / **속도:** {speed_val} 음절/초")
+
+                audio_path_val = selected_row.get("audio_path", selected_row.get("audio", ""))
+                if audio_path_val and os.path.exists(audio_path_val):
+                    st.audio(audio_path_val)
                 else:
-                    highlighted_script += f"<span style='color: black;'>{char}</span>"
-
-            st.markdown(
-                f"<div style='background-color: #f9f9f9; padding: 15px; border-radius: 8px;'>{highlighted_script}</div>",
-                unsafe_allow_html=True
-            )
+                    st.caption("🔊 녹음 파일 경로를 찾을 수 없거나 아직 저장되지 않았습니다.")
