@@ -31,3 +31,14 @@ NOTES = [
     "💡 빨갛게 표시된 음절은 두 모델이 모두 원문과 다르게 들었다고 판단한 위치입니다.",
     "💡 마이크와 환경에 따라 음량(dB) 측정 결과는 다를 수 있으므로 상대적인 변화 위주로 확인하세요."
 ]
+
+def target_gap_message(duration_s, target_sec):
+    if target_sec is None or target_sec <= 0:
+        return ""
+    diff = round(duration_s - target_sec, 1)
+    if diff > 0:
+        return f"⏱️ **목표 시간 결과:** 목표({target_sec}초)보다 **{diff}초 초과**되었습니다."
+    elif diff < 0:
+        return f"⏱️ **목표 시간 결과:** 목표({target_sec}초)보다 **{abs(diff)}초 단축**되었습니다."
+    else:
+        return f"⏱️ **목표 시간 결과:** 목표 시간({target_sec}초)에 정확히 도달했습니다!"
