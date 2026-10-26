@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import sqlite3
 import datetime
@@ -6,7 +7,7 @@ import tempfile
 import pandas as pd
 import streamlit as st
 import analysis  # analysis.py 모듈 임포트
-from messages import score_message, speed_message, pause_message  # messages.py 모듈 임포트
+from messages import score_message, speed_message, pause_message, NOTES  # messages.py 모듈 임포트
 
 # ==========================================
 # [디렉토리 및 DB 설정]
@@ -14,9 +15,11 @@ from messages import score_message, speed_message, pause_message  # messages.py 
 DB_PATH = "speechlog.db"
 RECORDING_DIR = "recordings"
 
+# 녹음 저장용 폴더 생성
 if not os.path.exists(RECORDING_DIR):
     os.makedirs(RECORDING_DIR)
 
+# SQLite DB 초기화 (scripts, attempts)
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -51,7 +54,7 @@ def init_db():
 
 init_db()
 
-# 모델 사전 워밍업
+# 모델 사전 로드 (앱 로딩 속도 최적화)
 @st.cache_resource
 def warm_up():
     analysis.load_models()
@@ -75,19 +78,50 @@ with tab1:
 
     user_name = st.text_input("사용자 이름", placeholder="이름을 입력하세요 (예: 홍길동)")
 
-    preset_scripts = {
-        "선택 안함 (직접 입력)": "",
-        "면접 대본 1": "안녕하십니까. 데이터사이언스학과 캡스톤디자인 6조 발표자입니다. 오늘 스피치로그 서비스를 소개하겠습니다.",
-        "발표 대본 2": "한국어 낭독의 적정 속도는 초당 5음절에서 7음절 사이입니다. 또박또박 정확하게 발음하는 것이 중요합니다."
-    }
+# 1) scripts.csv 읽어오기 (번호/ID, 제목, 내용 대응)
+    script_options = {"직접 입력": ""}
+    if os.path.exists("scripts.csv"):
+        df_csv = None
+        for enc in ["utf-8-sig", "utf-8", "cp949", "euc-kr"]:
+            try:
+                df_csv = pd.read_csv("scripts.csv", encoding=enc)
+                break
+            except Exception:
+                continue
 
-    selected_option = st.selectbox("대본 선택", list(preset_scripts.keys()))
+        if df_csv is not None:
+            cols = list(df_csv.columns)
+            # 열이 3개 이상일 때 (예: 번호/id, 제목/title, 내용/content)
+            if len(cols) >= 3:
+                for _, r in df_csv.iterrows():
+                    # 번호(id)와 제목을 조합하여 드롭다운 표기 (예: "3. 발음규칙(구개음화)" 또는 제목만)
+                    id_val = str(r[cols[0]]).strip()
+                    title_val = str(r[cols[1]]).strip()
+                    content_val = str(r[cols[2]]).strip()
+                    
+                    display_label = f"{id_val}. {title_val}" if id_val.isdigit() else title_val
+                    if content_val and content_val != "nan":
+                        script_options[display_label] = content_val
+            # 열이 2개일 때 (제목, 내용)
+            elif len(cols) == 2:
+                for _, r in df_csv.iterrows():
+                    title_val = str(r[cols[0]]).strip()
+                    content_val = str(r[cols[1]]).strip()
+                    if title_val and content_val and title_val != "nan":
+                        script_options[title_val] = content_val
 
-    if selected_option == "선택 안함 (직접 입력)":
+    # CSV 파일이 없거나 유효한 대본이 없을 때만 예시 대본 추가
+    if len(script_options) == 1:
+        script_options["면접 대본 1"] = "안녕하십니까. 데이터사이언스학과 캡스톤디자인 6조 발표자입니다. 오늘 스피치로그 서비스를 소개하겠습니다."
+        script_options["발표 대본 2"] = "한국어 낭독의 적정 속도는 초당 5음절에서 7음절 사이입니다. 또박또박 정확하게 발음하는 것이 중요합니다."
+
+    selected_option = st.selectbox("대본 선택", list(script_options.keys()))
+
+    if selected_option == "직접 입력":
         script_text = st.text_area("대본 직접 입력", placeholder="분석할 한글 대본 내용을 입력해 주세요.")
         script_title = "자유 입력 대본"
     else:
-        script_text = st.text_area("대본 내용", value=preset_scripts[selected_option], height=100)
+        script_text = st.text_area("대본 내용", value=script_options[selected_option], height=100)
         script_title = selected_option
 
     st.subheader("2. 목표 시간 설정 (선택)")
@@ -98,7 +132,6 @@ with tab1:
         required_cps = round(n_syl / target_time_s, 2) if target_time_s else 0
         st.info(f"💡 대본 전체({n_syl} 음절)를 {target_time_s}초 내에 맞추려면 **초당 약 {required_cps} 음절** 속도로 말해야 합니다.")
 
-    # ★ 3. 녹음 방식 선택 (직접 녹음 vs 파일 업로드) ★
     st.subheader("3. 녹음하기 / 파일 올리기")
     input_type = st.radio("입력 방식 선택", ["🎤 직접 녹음하기", "📁 음성 파일 업로드하기"], horizontal=True)
 
@@ -112,8 +145,9 @@ with tab1:
             st.warning("⚠️ 이름을 입력해 주세요.")
             st.stop()
             
-        if not script_text.strip():
-            st.warning("⚠️ 대본을 입력해 주세요.")
+        # 한글 유효성 검사
+        if not script_text.strip() or len(re.findall(r"[가-힣]", script_text)) == 0:
+            st.warning("⚠️ 한글 대본을 입력해 주세요.")
             st.stop()
             
         if audio_data is None:
@@ -132,7 +166,7 @@ with tab1:
                 st.error(f"⚠️ {result['error']}")
                 st.stop()
 
-            # 오디오 저장
+            # 녹음 오디오 recordings/ 폴더에 저장
             timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             saved_audio_name = f"{user_name}_{timestamp_str}.wav"
             saved_audio_path = os.path.join(RECORDING_DIR, saved_audio_name)
@@ -162,7 +196,7 @@ with tab1:
             st.success("✅ 분석 완료!")
             st.divider()
 
-            # 결과 화면
+            # --- 결과 화면 ---
             st.header(f"📊 {user_name} 님의 분석 결과")
 
             col1, col2, col3 = st.columns(3)
@@ -202,6 +236,11 @@ with tab1:
 
             st.subheader("🔊 음량(소리 크기) 변화 그래프")
             st.line_chart(result.get('db', []))
+
+            # 결과 하단 설명 캡션 (messages.py의 NOTES)
+            st.divider()
+            for note in NOTES:
+                st.caption(note)
 
         finally:
             if os.path.exists(tmp_wav_path):

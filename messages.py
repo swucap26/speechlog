@@ -22,3 +22,12 @@ def speed_message(syl_per_s):
 
 def pause_message(pause_count, pause_total_s):
     return f"⏸️ 총 {pause_count}회의 쉼이 감지되었으며, 쉬어간 총 시간은 {pause_total_s}초입니다."
+
+# 기존 messages.py 내용 유지...
+
+NOTES = [
+    "💡 발음 점수는 두 음성 인식 모델(kresnik, kkonjeong)이 공통으로 어긋났다고 본 음절 비율로 계산됩니다.",
+    "💡 적정 말하기 속도는 초당 5~7음절 기준이며, 쉼(0.3초 이상 조용함)은 속도 계산에서 제외됩니다.",
+    "💡 빨갛게 표시된 음절은 두 모델이 모두 원문과 다르게 들었다고 판단한 위치입니다.",
+    "💡 마이크와 환경에 따라 음량(dB) 측정 결과는 다를 수 있으므로 상대적인 변화 위주로 확인하세요."
+]
