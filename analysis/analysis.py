@@ -485,7 +485,26 @@ def analyze(wav_path, script, models=("kresnik", "kkonjeong")):
         "elapsed_s": round(time.time() - t0, 1),          # 분석에 걸린 시간 (30초 안이어야 해요)
     }
 
+import re
+RULE_NAMES = ["비음화", "유음화", "구개음화", "경음화", "ㅎ 축약·탈락", "연음", "겹받침", "ㅓ/ㅗ 구분"]   # 대본 01~08 순서
 
+
+def weakest_rules(scores_by_rule, n=2):
+    """scores_by_rule = {"비음화": 85.7, ...} → 점수가 가장 낮은 규칙 n개 [(규칙, 점수)]"""
+    return sorted(scores_by_rule.items(), key=lambda kv: (kv[1], kv[0]))[:n]
+
+def speed_for_target(script, target_sec):
+    """목표 시간 안에 읽으려면 필요한 초당 음절 수."""
+    return round(count_syllables(script) / target_sec, 1)
+
+def target_gap_message(duration_s, target_sec):
+    gap = round(duration_s - target_sec)
+    if gap > 0:
+        return f"목표보다 {gap}초 초과"
+    if gap < 0:
+        return f"목표보다 {-gap}초 미달"
+    return "목표 시간과 거의 같아요"
+    
 if __name__ == "__main__":
     import sys
     if len(sys.argv) < 3:
