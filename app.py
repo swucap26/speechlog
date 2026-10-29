@@ -5,6 +5,8 @@ import datetime
 import tempfile
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
+from pacer import pacemaker_html
 
 import analysis
 import db  # B학생이 제공한 db.py 모듈 임포트
@@ -36,7 +38,7 @@ tab1, tab2 = st.tabs(["🎙️ 연습", "📈 내 기록"])
 with tab1:
     st.subheader("1. 사용자 정보 및 대본 선택")
 
-    user_name = st.text_input("사용자 이름", placeholder="이름을 입력하세요 (예: 홍길동)")
+    user_case = st.text_input("스피치 종류", placeholder="종류를 입력하세요 (예: 00강의, 00회사 면접)")
 
     # scripts.csv에서 대본 목록 읽어오기
     script_options = {"직접 입력": ""}
@@ -81,6 +83,14 @@ with tab1:
 
     st.subheader("2. 목표 시간 설정 (선택)")
     target_time_s = st.number_input("목표 발표 시간 (초)", min_value=0.0, value=0.0, step=1.0, help="0초 설정 시 제한 없음")
+
+    # app.py 의 목표 시간 입력(target = st.number_input(...)) 바로 아래에 붙여넣는 코드
+    if target_time_s > 0 and script_text.strip():
+        with st.expander("페이스메이커로 연습하기"):
+            try:
+                components.html(pacemaker_html(script_text, target_time_s), height=320, scrolling=True)
+            except ValueError as e:
+                st.warning(str(e))
     
     if target_time_s > 0 and script_text.strip():
         n_syl = analysis.count_syllables(script_text)
@@ -96,7 +106,7 @@ with tab1:
         audio_data = st.file_uploader("음성 파일을 선택해 주세요 (wav, m4a, mp3)", type=["wav", "m4a", "mp3"])
 
     if st.button("🚀 분석하기", type="primary", use_container_width=True):
-        if not user_name.strip():
+        if not user_case.strip():
             st.warning("⚠️ 이름을 입력해 주세요.")
             st.stop()
             
@@ -123,20 +133,20 @@ with tab1:
             # 2) recordings/ 폴더 생성 및 파일 복사 저장 (recordings/이름_시간.wav)
             os.makedirs("recordings", exist_ok=True)
             timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            saved_audio_name = f"{user_name}_{timestamp_str}.wav"
+            saved_audio_name = f"{user_case}_{timestamp_str}.wav"
             saved_audio_path = os.path.join("recordings", saved_audio_name)
             
             with open(saved_audio_path, "wb") as f:
                 f.write(audio_data.getvalue())
 
             # 3) 결과가 나온 직후 db.save_attempt(...) 호출로 DB 저장
-            db.save_attempt(user_name, script_title, result, saved_audio_path)
+            db.save_attempt(user_case, script_title, result, saved_audio_path)
 
             st.success("✅ 분석 완료 및 기록 저장 성공!")
             st.divider()
 
             # 결과 화면
-            st.header(f"📊 {user_name} 님의 분석 결과")
+            st.header(f"📊 {user_case} 의 분석 결과")
 
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -190,13 +200,13 @@ with tab1:
 with tab2:
     st.header("📈 내 기록 (회차별 스피치 분석)")
 
-    user_name_search = st.text_input("조회할 사용자 이름 입력", key="search_user_input")
+    user_case_search = st.text_input("조회할 스피치 종류 입력", key="search_user_input")
 
-    if not user_name_search.strip():
-        st.info("💡 사용자 이름을 입력하시면 저장된 연습 기록을 불러옵니다.")
+    if not user_case_search.strip():
+        st.info("💡 스피치 종류를 입력하시면 저장된 연습 기록을 불러옵니다.")
     else:
         # 1) B학생의 db.list_scripts(name) 호출 -> 딕셔너리 리스트가 반환됨
-        scripts_list = db.list_scripts(user_name_search)
+        scripts_list = db.list_scripts(user_case_search)
         
         if not scripts_list:
             st.warning("아직 연습 기록이 없어요")
@@ -215,7 +225,7 @@ with tab2:
                 target_script_id = selected_script_item
 
             # 3) 추출한 script_id를 get_attempts에 넘겨줌
-            rows = db.get_attempts(user_name_search, target_script_id)
+            rows = db.get_attempts(user_case_search, target_script_id)
             
             if not rows:
                 st.warning("아직 연습 기록이 없어요")
