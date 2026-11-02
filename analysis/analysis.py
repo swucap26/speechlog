@@ -30,7 +30,7 @@ MAIN_MODEL = "kresnik"        # 발음 점수(score)를 이 모델의 match_best
 MIN_DURATION_S = 1.0          # 이보다 짧으면 "다시 녹음해 주세요"
 MIN_PEAK = 0.01               # 소리 최대 크기가 이보다 작으면 무음으로 봐요 (0~1 범위)
 PAUSE_MIN_S = 0.3             # 이 시간 이상 조용하면 '쉼'
-PAUSE_BELOW_PEAK_DB = 35      # 큰 소리(상위 5%)보다 이만큼(dB) 작으면 '조용함'
+PAUSE_BELOW_PEAK_DB = 30      # 큰 소리(상위 5%)보다 이만큼(dB) 작으면 '조용함'
 FRAME_S = 0.1                 # 크기(dB)를 0.1초마다 계산
 
 _cache = {}
