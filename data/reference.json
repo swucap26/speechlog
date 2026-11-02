@@ -1,0 +1,31 @@
+{
+  "score_mean": 86.5,
+  "rate_mean": 5.2,
+  "rate_low": 4.7,
+  "rate_high": 5.6,
+  "literature_rate_low": 5.0,
+  "literature_rate_high": 7.0,
+  "score": {
+    "mean": 86.5,
+    "sd": 6.9,
+    "p25": 84.2,
+    "median": 86.7,
+    "p75": 92.4,
+    "min": 70.6,
+    "max": 100.0
+  },
+  "rate": {
+    "mean": 5.2,
+    "sd": 0.7,
+    "p25": 4.7,
+    "median": 5.2,
+    "p75": 5.6,
+    "min": 3.2,
+    "max": 6.2
+  },
+  "n_recordings": 30,
+  "n_people": 3,
+  "n_sentences": 10,
+  "source": "main_results.csv, style=clear",
+  "caption": "팀 3명이 또박또박 읽은 녹음 30개 기준 (목소리 크기는 마이크마다 달라 비교하지 않음)"
+}

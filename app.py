@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import datetime
 import tempfile
 import pandas as pd
@@ -9,9 +10,10 @@ import streamlit.components.v1 as components
 from pacer import pacemaker_html
 import analysis
 import db  # db.py 모듈 활용
-from messages import score_message, speed_message, pause_message, NOTES
+import charts  # charts.py 모듈 활용
+from messages import score_message, speed_message, pause_message, target_gap_message, NOTES
 
-# 1) 4번 단계: 앱 시작 시 DB 초기화 한번 호출
+# 앱 시작 시 DB 초기화 (테이블 생성)
 db.init_db()
 
 # 모델 사전 워밍업
@@ -39,7 +41,7 @@ with tab1:
 
     user_case = st.text_input("스피치 종류", placeholder="종류를 입력하세요 (예: 00강의, 00회사 면접)")
 
-    # 7번 단계: scripts.csv를 pandas.read_csv로 읽어 선택 상자에 넣고 "직접 입력" 추가
+    # scripts.csv에서 대본 목록 읽어오기
     script_options = {"직접 입력": ""}
     if os.path.exists("scripts.csv"):
         df_csv = None
@@ -63,7 +65,7 @@ with tab1:
             elif len(cols) == 2:
                 for _, r in df_csv.iterrows():
                     title_val = str(r[cols[0]]).strip()
-                    content_val = str(r[cols[1]]).strip()
+                    content_val = str(r[cols[2]]).strip()
                     if title_val and content_val and title_val != "nan":
                         script_options[title_val] = content_val
 
@@ -86,15 +88,19 @@ with tab1:
     # 페이스메이커 기능
     if target_time_s > 0 and script_text.strip():
         with st.expander("페이스메이커로 연습하기"):
+            st.info("💡 **사용 순서 안내:** 페이스메이커 시작 → 동시에 아래 녹음 시작")
             try:
                 components.html(pacemaker_html(script_text, target_time_s), height=320, scrolling=True)
             except ValueError as e:
                 st.warning(str(e))
     
     if target_time_s > 0 and script_text.strip():
-        n_syl = analysis.count_syllables(script_text)
-        required_cps = round(n_syl / target_time_s, 2) if target_time_s else 0
-        st.info(f"💡 대본 전체({n_syl} 음절)를 {target_time_s}초 내에 맞추려면 **초당 약 {required_cps} 음절** 속도로 말해야 합니다.")
+        if hasattr(analysis, "speed_for_target"):
+            required_cps = analysis.speed_for_target(script_text, target_time_s)
+        else:
+            n_syl = analysis.count_syllables(script_text)
+            required_cps = round(n_syl / target_time_s, 2) if target_time_s else 0
+        st.info(f"💡 대본 전체를 {target_time_s}초 내에 맞추려면 **초당 약 {required_cps} 음절** 속도로 말해야 합니다.")
 
     st.subheader("3. 녹음하기 / 파일 올리기")
     input_type = st.radio("입력 방식 선택", ["🎤 직접 녹음하기", "📁 음성 파일 업로드하기"], horizontal=True)
@@ -139,12 +145,16 @@ with tab1:
             with open(saved_audio_path, "wb") as f:
                 f.write(audio_data.getvalue())
 
-            # 4번 단계: db.save_attempt(...)로 저장[cite: 1]
-            db.save_attempt(user_case, script_title, result, saved_audio_path)
+            # DB 저장
+            try:
+                db.save_attempt(user_case, script_title, result, saved_audio_path, target_sec=target_time_s)
+            except TypeError:
+                db.save_attempt(user_case, script_title, result, saved_audio_path)
 
-            # 5번 단계: 분석 결과를 st.session_state["result"]에 저장[cite: 1]
+            # 세션에 결과 저장
             st.session_state["result"] = result
             st.session_state["user_case"] = user_case
+            st.session_state["script_text"] = script_text
             st.session_state["target_time_s"] = target_time_s
 
             st.success("✅ 분석 완료 및 기록 저장 성공!")
@@ -153,10 +163,11 @@ with tab1:
             if os.path.exists(tmp_wav_path):
                 os.remove(tmp_wav_path)
 
-    # 5번 단계: 화면 그리기는 if "result" in st.session_state: 아래에서 수행[cite: 1]
+    # 분석 결과 출력 영역
     if "result" in st.session_state:
         res = st.session_state["result"]
         ucase = st.session_state.get("user_case", user_case)
+        stext = st.session_state.get("script_text", script_text)
         ttime = st.session_state.get("target_time_s", target_time_s)
 
         st.divider()
@@ -174,15 +185,46 @@ with tab1:
         st.write(speed_message(res.get("syl_per_s")))
         st.write(pause_message(res.get("pause_count"), res.get("pause_total_s")))
 
-        actual_dur = res.get("duration_s", 0)
+        # ★ C5-6: 팀 평균 비교 영역 추가 ★
+        ref_path = "data/reference.json" if os.path.exists("data/reference.json") else "reference.json"
+        if os.path.exists(ref_path):
+            try:
+                with open(ref_path, "r", encoding="utf-8") as ref_f:
+                    ref = json.load(ref_f)
+                
+                st.subheader("평균과 비교")
+                
+                # 발음 점수 및 속도 키(Key) 값 예외 안전 처리
+                my_score = res.get("score", 0)
+                mean_score = ref.get("score_mean", 0)
+                
+                my_rate = res.get("syl_per_s", res.get("artic_rate", 0))
+                mean_rate = ref.get("rate_mean", ref.get("artic_rate_mean", 0))
+
+                st.write(f"내 발음 점수 {my_score}점 / 평균 {mean_score:.0f}점")
+                st.write(f"내 속도 {my_rate:.1f} 음절/초 / 평균 {mean_rate:.1f}, 일반 5~7")
+                st.caption("※ 팀 3명이 바르게 읽은 녹음 기준입니다. 목소리 크기는 마이크마다 달라 비교하지 않습니다.")
+            except Exception as e:
+                pass
+
         if ttime > 0:
-            diff = round(actual_dur - ttime, 1)
-            if diff > 0:
-                st.warning(f"⏱️ **목표 시간 결과:** 목표({ttime}초)보다 **{diff}초 초과**되었습니다.")
-            elif diff < 0:
-                st.info(f"⏱️ **목표 시간 결과:** 목표({ttime}초)보다 **{abs(diff)}초 단축**되었습니다.")
+            gap_msg = target_gap_message(res.get("duration_s", 0), ttime)
+            if "초과" in gap_msg:
+                st.warning(gap_msg)
+            elif "단축" in gap_msg:
+                st.info(gap_msg)
             else:
-                st.success(f"⏱️ **목표 시간 결과:** 목표 시간({ttime}초)에 정확히 도달했습니다!")
+                st.success(gap_msg)
+
+        # 3줄 대본 비교 문구
+        rec = res.get("recognized", {})
+        main_text = rec.get("kresnik", "") if isinstance(rec, dict) else ""
+        if main_text:
+            st.markdown("**대본:** " + stext)
+            st.markdown("**이렇게 들렸어요:** " + main_text)
+            if "pron" in res:
+                st.markdown("**발음 기준 대본:** " + str(res["pron"]))
+            st.write("")
 
         st.subheader("📝 대본 발음점검")
         highlighted_script = ""
@@ -198,17 +240,24 @@ with tab1:
         )
 
         st.subheader("🔊 음량(소리 크기) 변화 그래프")
-        st.line_chart(res.get('db', []))
+        try:
+            st.altair_chart(
+                charts.volume_chart(res.get("db", []), res.get("pauses", [])), 
+                use_container_width=True
+            )
+        except Exception:
+            st.line_chart(res.get("db", []))
 
         st.divider()
         for note in NOTES:
             st.caption(note)
 
-        # 6번 단계: "다시 연습" 버튼 구현[cite: 1]
+        # "다시 연습" 버튼
         st.write("")
         if st.button("🔄 다시 연습"):
             st.session_state.pop("result", None)
             st.session_state.pop("user_case", None)
+            st.session_state.pop("script_text", None)
             st.session_state.pop("target_time_s", None)
             st.rerun()
 
@@ -223,7 +272,6 @@ with tab2:
     if not user_case_search.strip():
         st.info("💡 스피치 종류를 입력하시면 저장된 연습 기록을 불러옵니다.")
     else:
-        # 4번 단계: 대본 목록 db.list_scripts() 호출[cite: 1]
         scripts_list = db.list_scripts(user_case_search)
         
         if not scripts_list:
@@ -240,7 +288,6 @@ with tab2:
             else:
                 target_script_id = selected_script_item
 
-            # 4번 단계: 기록 불러오기 db.get_attempts(...)[cite: 1]
             rows = db.get_attempts(user_case_search, target_script_id)
             
             if not rows:
@@ -251,7 +298,6 @@ with tab2:
                 if "round" not in df_attempts.columns:
                     df_attempts["round"] = range(1, len(df_attempts) + 1)
 
-                # 4번 단계: 대본 바꾸기 / 변화 문구 db.change_sentence(...)[cite: 1]
                 if len(rows) >= 2:
                     try:
                         st.success(db.change_sentence(rows[-2], rows[-1]))
@@ -263,14 +309,22 @@ with tab2:
                 
                 with col_c1:
                     st.markdown("**발음 점수**")
-                    score_col = "score" if "score" in df_attempts.columns else df_attempts.columns[0]
-                    st.line_chart(df_attempts.set_index("round")[[score_col]])
+                    try:
+                        chart_score = charts.history_chart(df_attempts, x="round", y="score", y_title="발음 점수")
+                        st.altair_chart(chart_score, use_container_width=True)
+                    except Exception:
+                        score_col = "score" if "score" in df_attempts.columns else df_attempts.columns[0]
+                        st.line_chart(df_attempts.set_index("round")[[score_col]])
                 
                 with col_c2:
                     st.markdown("**말하기 속도 (음절/초)**")
                     speed_col = "syl_per_s" if "syl_per_s" in df_attempts.columns else ("speed" if "speed" in df_attempts.columns else None)
                     if speed_col:
-                        st.line_chart(df_attempts.set_index("round")[[speed_col]])
+                        try:
+                            chart_speed = charts.history_chart(df_attempts, x="round", y=speed_col, y_title="말하기 속도")
+                            st.altair_chart(chart_speed, use_container_width=True)
+                        except Exception:
+                            st.line_chart(df_attempts.set_index("round")[[speed_col]])
 
                 st.divider()
 
