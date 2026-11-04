@@ -1,0 +1,7 @@
+streamlit
+numpy
+torch
+transformers
+librosa
+pecab
+g2pk2
