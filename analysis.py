@@ -29,6 +29,7 @@ MAIN_MODEL = "kresnik"        # 발음 점수(score)를 이 모델의 match_best
 # 시작값들: 녹음 몇 개를 직접 들으면서 조정하세요 (계획서 2주차 항목에도 "시작값"이라고 적혀 있어요)
 MIN_DURATION_S = 1.0          # 이보다 짧으면 "다시 녹음해 주세요"
 MIN_PEAK = 0.01               # 소리 최대 크기가 이보다 작으면 무음으로 봐요 (0~1 범위)
+MIN_LEVEL = 0.04              # 0.1초 단위 소리 크기의 상위 10% 지점이 이보다 작으면 무음
 PAUSE_MIN_S = 0.3             # 이 시간 이상 조용하면 '쉼'
 PAUSE_BELOW_PEAK_DB = 30      # 큰 소리(상위 5%)보다 이만큼(dB) 작으면 '조용함'
 FRAME_S = 0.1                 # 크기(dB)를 0.1초마다 계산
@@ -327,6 +328,15 @@ def trim_silence(wav, top_db=30):
 def count_syllables(script):
     return len(re.findall(r"[가-힣]", script))
 
+def _level90(wav):
+    """0.1초마다 소리 크기(RMS)를 구해 상위 10% 지점을 돌려줘요."""
+    hop = int(0.1 * SR)
+    n = len(wav) // hop
+    if n == 0:
+        return 0.0
+    rms = np.sqrt((wav[: n * hop].reshape(n, hop) ** 2).mean(axis=1))
+    return float(np.percentile(rms, 90))
+
 
 def check_input(wav, script):
     """문제가 있으면 화면에 보여 줄 문구를, 괜찮으면 None을 돌려줘요."""
@@ -334,7 +344,7 @@ def check_input(wav, script):
         return "한글 대본을 입력해 주세요."
     if len(wav) / SR < MIN_DURATION_S:
         return "녹음이 너무 짧아요. 다시 녹음해 주세요."
-    if float(np.max(np.abs(wav))) < MIN_PEAK:
+    if float(np.max(np.abs(wav))) < MIN_PEAK or _level90(wav) < MIN_LEVEL:
         return "소리가 거의 들리지 않아요. 마이크를 확인하고 다시 녹음해 주세요."
     return None
 
