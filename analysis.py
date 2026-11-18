@@ -517,3 +517,7 @@ if __name__ == "__main__":
         print(f"{k}: {v}")
     if "marked" in res:
         print("틀린 음절 표시:", "".join(f"[{c}]" if b else c for c, b in res["marked"]))
+        
+def recommended_seconds(syllable_count: int):
+    """적정 속도 5~7음절/초 기준 권장 시간 범위(초). (최소 시간, 최대 시간) 반환"""
+    return syllable_count / 7, syllable_count / 5
