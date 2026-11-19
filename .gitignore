@@ -4,3 +4,7 @@ recordings/
 *.wav
 *.m4a
 *.mp3
+/.venv
+.venv/
+__pycache__/
+*.pyc
