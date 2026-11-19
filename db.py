@@ -1,3 +1,7 @@
+# 파일: db.py
+# 역할: SQLite 데이터베이스 저장·조회 및 사용자 PIN 확인
+# 작성: 박소현 (기여: PIN 확인 함수 추가)
+
 """스피치로그 기록 저장 모듈 (db.py) — 역할 B 담당.
 C의 app.py는 이 파일의 함수만 부르면 돼요. SQL을 직접 쓸 필요가 없어요.
 
@@ -146,3 +150,20 @@ def frequent_bad_syllables(user_name, top=5):
             if 0 <= idx < len(chars):
                 counts[chars[idx]] = counts.get(chars[idx], 0) + 1
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
+
+
+import hashlib
+
+def hash_pin(pin: str) -> str:
+    """PIN을 그대로 저장하지 않고 암호화(해시)한 값으로 저장"""
+    return hashlib.sha256(pin.encode()).hexdigest()
+
+def check_or_register(conn, user_name: str, pin: str) -> bool:
+    """닉네임이 없으면 새로 등록, 있으면 PIN이 맞는지 확인. 성공하면 True"""
+    conn.execute("CREATE TABLE IF NOT EXISTS users (user_name TEXT PRIMARY KEY, pin_hash TEXT NOT NULL)")
+    row = conn.execute("SELECT pin_hash FROM users WHERE user_name = ?", (user_name,)).fetchone()
+    if row is None:
+        conn.execute("INSERT INTO users (user_name, pin_hash) VALUES (?, ?)", (user_name, hash_pin(pin)))
+        conn.commit()
+        return True
+    return row[0] == hash_pin(pin)
