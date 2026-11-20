@@ -43,7 +43,7 @@ tab1, tab2 = st.tabs(["🎙️ 연습", "📈 내 기록"])
 # TAB 1: 연습
 # ==========================================
 with tab1:
-    st.subheader("1. 사용자 정보 및 대본 선택")
+    st.subheader("1. 연습 정보 입력")
 
     user_case = st.text_input(
     "스피치 종류(연습 이름)",
