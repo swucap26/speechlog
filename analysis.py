@@ -531,3 +531,9 @@ if __name__ == "__main__":
 def recommended_seconds(syllable_count: int):
     """적정 속도 5~7음절/초 기준 권장 시간 범위(초). (최소 시간, 최대 시간) 반환"""
     return syllable_count / 7, syllable_count / 5
+
+FILLERS = {'어', '음', '아', '으', '엄', '엉', '응', '앙'}
+
+def find_fillers(text: str):
+    '''인식된 문장에서 추임새로 적힌 단어를 찾아 목록으로 반환'''
+    return [w for w in text.split() if w in FILLERS]
