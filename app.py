@@ -1,3 +1,7 @@
+# 파일: app.py
+# 역할: Streamlit 기반 스피치 연습, 분석 결과 표시 및 기록 조회 메인 화면
+# 작성: 조주영, 박소현
+
 import os
 import re
 import json
