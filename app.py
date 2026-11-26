@@ -1,6 +1,5 @@
 # 파일: app.py
 # 역할: Streamlit 기반 스피치 연습, 분석 결과 표시 및 기록 조회 메인 화면
-# 작성: 조주영, 박소현
 
 import os
 import re
@@ -11,13 +10,14 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+import style
 from pacer import pacemaker_html
 import analysis
-import db  # db.py 모듈 활용
-import charts  # charts.py 모듈 활용
+import db
+import charts
 from messages import score_message, speed_message, pause_message, target_gap_message, NOTES
 
-# 앱 시작 시 DB 초기화 (테이블 생성)
+# 앱 시작 시 DB 초기화
 db.init_db()
 
 # 모델 사전 워밍업
@@ -29,105 +29,107 @@ def warm_up():
 warm_up()
 
 # ==========================================
-# 레이아웃 및 탭 구성
+# 레이아웃 및 스타일 구성 (U5-1 로고 및 타이틀)
 # ==========================================
-st.set_page_config(page_title="스피치로그 (SpeechLog)", layout="centered")
-st.title("🎤 스피치로그 (SpeechLog)")
+st.set_page_config(page_title="스피치로그 (SpeechLog)", page_icon="assets/speechlog_logo.png", layout="centered")
+style.apply_style()
 
-# 탭 구성
-st.markdown("""
-<style>
-.stTabs [data-baseweb="tab"] { font-size: 1.3rem; padding: 14px 28px; }
-.stTabs [aria-selected="true"] { background-color: #FDE8E8; border-radius: 8px; }
-</style>
-""", unsafe_allow_html=True)
+st.image("assets/speechlog_logo.png", width=110)
+st.title("스피치로그 (SpeechLog)")
+
+# 탭 구성 (C8/U5-1 공통 알약 탭)
 tab1, tab2 = st.tabs(["🎙️ 연습", "📈 내 기록"])
 
 # ==========================================
 # TAB 1: 연습
 # ==========================================
 with tab1:
-    st.subheader("1. 연습 정보 입력")
+    # 📦 카드 1: 대본 (U5-2)
+    with st.container(key="card_script"):
+        st.subheader("대본")
 
-    user_case = st.text_input(
-    "스피치 종류(연습 이름)",
-    help="연습 목적을 구분하는 이름",
-    placeholder="예) 00회사 면접, 졸업발표"
-)
+        # C8: help 옵션 제거 반영
+        user_case = st.text_input(
+            "스피치 종류(연습 이름)",
+            placeholder="예) 00회사 면접, 졸업발표"
+        )
 
-    # scripts.csv에서 대본 목록 읽어오기
-    script_options = {"직접 입력": ""}
-    if os.path.exists("scripts.csv"):
-        df_csv = None
-        for enc in ["utf-8-sig", "utf-8", "cp949", "euc-kr"]:
-            try:
-                df_csv = pd.read_csv("scripts.csv", encoding=enc)
-                break
-            except Exception:
-                continue
+        script_options = {"직접 입력": ""}
+        if os.path.exists("scripts.csv"):
+            df_csv = None
+            for enc in ["utf-8-sig", "utf-8", "cp949", "euc-kr"]:
+                try:
+                    df_csv = pd.read_csv("scripts.csv", encoding=enc)
+                    break
+                except Exception:
+                    continue
 
-        if df_csv is not None:
-            cols = list(df_csv.columns)
-            if len(cols) >= 3:
-                for _, r in df_csv.iterrows():
-                    id_val = str(r[cols[0]]).strip()
-                    title_val = str(r[cols[1]]).strip()
-                    content_val = str(r[cols[2]]).strip()
-                    display_label = f"{id_val}. {title_val}" if id_val.isdigit() else title_val
-                    if content_val and content_val != "nan":
-                        script_options[display_label] = content_val
-            elif len(cols) == 2:
-                for _, r in df_csv.iterrows():
-                    title_val = str(r[cols[0]]).strip()
-                    content_val = str(r[cols[2]]).strip()
-                    if title_val and content_val and title_val != "nan":
-                        script_options[title_val] = content_val
+            if df_csv is not None:
+                cols = list(df_csv.columns)
+                if len(cols) >= 3:
+                    for _, r in df_csv.iterrows():
+                        id_val = str(r[cols[0]]).strip()
+                        title_val = str(r[cols[1]]).strip()
+                        content_val = str(r[cols[2]]).strip()
+                        display_label = f"{id_val}. {title_val}" if id_val.isdigit() else title_val
+                        if content_val and content_val != "nan":
+                            script_options[display_label] = content_val
+                elif len(cols) == 2:
+                    for _, r in df_csv.iterrows():
+                        title_val = str(r[cols[0]]).strip()
+                        content_val = str(r[cols[2]]).strip()
+                        if title_val and content_val and title_val != "nan":
+                            script_options[title_val] = content_val
 
-    if len(script_options) == 1:
-        script_options["면접 대본 1"] = "안녕하십니까. 데이터사이언스학과 캡스톤디자인 6조 발표자입니다. 오늘 스피치로그 서비스를 소개하겠습니다."
-        script_options["발표 대본 2"] = "한국어 낭독의 적정 속도는 초당 5음절에서 7음절 사이입니다. 또박또박 정확하게 발음하는 것이 중요합니다."
+        if len(script_options) == 1:
+            script_options["면접 대본 1"] = "안녕하십니까. 데이터사이언스학과 캡스톤디자인 6조 발표자입니다. 오늘 스피치로그 서비스를 소개하겠습니다."
+            script_options["발표 대본 2"] = "한국어 낭독의 적정 속도는 초당 5음절에서 7음절 사이입니다. 또박또박 정확하게 발음하는 것이 중요합니다."
 
-    selected_option = st.selectbox("대본 선택", list(script_options.keys()))
+        selected_option = st.selectbox("대본 선택", list(script_options.keys()))
 
-    if selected_option == "직접 입력":
-        script_text = st.text_area("대본 직접 입력", placeholder="분석할 한글 대본 내용을 입력해 주세요.")
-        script_title = "자유 입력 대본"
-    else:
-        script_text = st.text_area("대본 내용", value=script_options[selected_option], height=100)
-        script_title = selected_option
-
-    st.subheader("2. 목표 시간 설정 (선택)")
-    target_time_s = st.number_input("목표 발표 시간 (초)", min_value=0.0, value=0.0, step=1.0, help="0초 설정 시 제한 없음")
-
-    # 대본 리드 연습 기능
-    if target_time_s > 0 and script_text.strip():
-        with st.expander("대본 리드 연습하기"):
-            st.info("💡 **사용 순서 안내:** 대본 리드 연습 시작 → 동시에 아래 녹음 시작")
-            try:
-                components.html(pacemaker_html(script_text, target_time_s), height=320, scrolling=True)
-            except ValueError as e:
-                st.warning(str(e))
-    
-    if target_time_s > 0 and script_text.strip():
-        if hasattr(analysis, "speed_for_target"):
-            required_cps = analysis.speed_for_target(script_text, target_time_s)
+        if selected_option == "직접 입력":
+            script_text = st.text_area("대본 직접 입력", placeholder="분석할 한글 대본 내용을 입력해 주세요.")
+            script_title = "자유 입력 대본"
         else:
-            n_syl = analysis.count_syllables(script_text)
-            required_cps = round(n_syl / target_time_s, 2) if target_time_s else 0
-        st.info(f"💡 대본 전체를 {target_time_s}초 내에 맞추려면 **초당 약 {required_cps} 음절** 속도로 말해야 합니다.")
+            script_text = st.text_area("대본 내용", value=script_options[selected_option], height=100)
+            script_title = selected_option
 
-    st.subheader("3. 녹음하기 / 파일 올리기")
-    input_type = st.radio("입력 방식 선택", ["🎤 직접 녹음하기", "📁 음성 파일 업로드하기"], horizontal=True)
+    # 📦 카드 2: 목표 시간 (U5-2)
+    with st.container(key="card_target"):
+        st.subheader("목표 시간 (선택)")
+        # U5-2: 소수점 제거 step=1, int 타입
+        target_time_s = st.number_input("목표 발표 시간 (초)", min_value=0, value=0, step=1)
 
-    if input_type == "🎤 직접 녹음하기":
-        audio_data = st.audio_input("마이크 버튼을 눌러 녹음을 진행해 주세요.")
-    else:
-        audio_data = st.file_uploader("음성 파일을 선택해 주세요 (wav, m4a, mp3)", type=["wav", "m4a", "mp3"])
+        # C9: 콜아웃 공간 확보를 위해 height=380 지정
+        if target_time_s > 0 and script_text.strip():
+            with st.expander("대본 리드 연습하기"):
+                try:
+                    components.html(pacemaker_html(script_text, target_time_s), height=380, scrolling=True)
+                except ValueError as e:
+                    st.warning(str(e))
+        
+        if target_time_s > 0 and script_text.strip():
+            if hasattr(analysis, "speed_for_target"):
+                required_cps = analysis.speed_for_target(script_text, target_time_s)
+            else:
+                n_syl = analysis.count_syllables(script_text)
+                required_cps = round(n_syl / target_time_s, 2) if target_time_s else 0
+            style.callout(f"대본 전체를 {target_time_s}초 내에 맞추려면 <b>초당 약 {required_cps} 음절</b> 속도로 말해야 합니다.")
 
-    # 🚀 분석하기 버튼 클릭 시
+    # 📦 카드 3: 녹음 (U5-2)
+    with st.container(key="card_record"):
+        st.subheader("녹음")
+        input_type = st.radio("입력 방식 선택", ["🎤 직접 녹음하기", "📁 음성 파일 업로드하기"], horizontal=True)
+
+        if input_type == "🎤 직접 녹음하기":
+            audio_data = st.audio_input("마이크 버튼을 눌러 녹음을 진행해 주세요.")
+        else:
+            audio_data = st.file_uploader("음성 파일을 선택해 주세요 (wav, m4a, mp3)", type=["wav", "m4a", "mp3"])
+
+    # 🚀 분석하기 버튼
     if st.button("🚀 분석하기", type="primary", use_container_width=True):
         if not user_case.strip():
-            st.warning("⚠️ 이름을 입력해 주세요.")
+            st.warning("⚠️ 스피치 종류를 입력해 주세요.")
             st.stop()
             
         if not script_text.strip() or len(re.findall(r"[가-힣]", script_text)) == 0:
@@ -150,7 +152,6 @@ with tab1:
                 st.error(f"⚠️ {result['error']}")
                 st.stop()
 
-            # 녹음 파일 저장
             os.makedirs("recordings", exist_ok=True)
             timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             saved_audio_name = f"{user_case}_{timestamp_str}.wav"
@@ -159,13 +160,11 @@ with tab1:
             with open(saved_audio_path, "wb") as f:
                 f.write(audio_data.getvalue())
 
-            # DB 저장
             try:
                 db.save_attempt(user_case, script_title, result, saved_audio_path, target_sec=target_time_s)
             except TypeError:
                 db.save_attempt(user_case, script_title, result, saved_audio_path)
 
-            # 세션에 결과 저장
             st.session_state["result"] = result
             st.session_state["user_case"] = user_case
             st.session_state["script_text"] = script_text
@@ -199,7 +198,6 @@ with tab1:
         st.write(speed_message(res.get("syl_per_s")))
         st.write(pause_message(res.get("pause_count"), res.get("pause_total_s")))
 
-        # ★ C5-6: 팀 평균 비교 영역 추가 ★
         ref_path = "data/reference.json" if os.path.exists("data/reference.json") else "reference.json"
         if os.path.exists(ref_path):
             try:
@@ -207,18 +205,15 @@ with tab1:
                     ref = json.load(ref_f)
                 
                 st.subheader("평균과 비교")
-                
-                # 발음 점수 및 속도 키(Key) 값 예외 안전 처리
                 my_score = res.get("score", 0)
                 mean_score = ref.get("score_mean", 0)
-                
                 my_rate = res.get("syl_per_s", res.get("artic_rate", 0))
                 mean_rate = ref.get("rate_mean", ref.get("artic_rate_mean", 0))
 
                 st.write(f"내 발음 점수 {my_score}점 / 평균 {mean_score:.0f}점")
                 st.write(f"내 속도 {my_rate:.1f} 음절/초 / 평균 {mean_rate:.1f}, 일반 5~7")
                 st.caption("※ 팀 3명이 바르게 읽은 녹음 기준입니다. 목소리 크기는 마이크마다 달라 비교하지 않습니다.")
-            except Exception as e:
+            except Exception:
                 pass
 
         if ttime > 0:
@@ -230,7 +225,6 @@ with tab1:
             else:
                 st.success(gap_msg)
 
-        # 3줄 대본 비교 문구
         rec = res.get("recognized", {})
         main_text = rec.get("kresnik", "") if isinstance(rec, dict) else ""
         if main_text:
@@ -253,9 +247,6 @@ with tab1:
             unsafe_allow_html=True
         )
 
-        with st.expander("왜 빨간색인가요?"):
-            st.write("두 AI 모델이 모두 이 음절을 대본과 다르게 들었습니다.")
-
         st.subheader("🔊 음량(소리 크기) 변화 그래프")
         try:
             st.altair_chart(
@@ -269,7 +260,6 @@ with tab1:
         for note in NOTES:
             st.caption(note)
 
-        # "다시 연습" 버튼
         st.write("")
         if st.button("🔄 다시 연습"):
             st.session_state.pop("result", None)
