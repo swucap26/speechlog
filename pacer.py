@@ -219,7 +219,10 @@ function clickMic(){
   try {
     const box = window.parent.document.querySelector('[data-testid="stAudioInput"]');
     const btn = box && box.querySelector('button');
-    if (btn) { btn.click(); return true; }
+    if (btn) { 
+      btn.click(); 
+      return true; 
+    }
   } catch (e) {}
   return false;
 }

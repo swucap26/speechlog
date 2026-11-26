@@ -38,7 +38,11 @@ st.image("assets/speechlog_logo.png", width=110)
 st.title("스피치로그 (SpeechLog)")
 
 # 탭 구성 (C8/U5-1 공통 알약 탭)
-tab1, tab2 = st.tabs(["🎙️ 연습", "📈 내 기록"])
+tab1, tab2 = st.tabs(
+    ["🎙️ 연습", "📈 내 기록"],
+    width="stretch",
+    key="main_tabs"
+)
 
 # ==========================================
 # TAB 1: 연습
@@ -272,30 +276,32 @@ with tab1:
 # TAB 2: 내 기록
 # ==========================================
 with tab2:
-    st.header("📈 내 기록 (회차별 스피치 분석)")
-
-    user_case_search = st.text_input("조회할 스피치 종류 입력", key="search_user_input")
+    # 📦 카드 1: 스피치 조회 및 대본 선택
+    with st.container(key="card_history_search"):
+        st.subheader("내 기록 (회차별 스피치 분석)")
+        user_case_search = st.text_input("조회할 스피치 종류 입력", key="search_user_input")
 
     if not user_case_search.strip():
-        st.info("💡 스피치 종류를 입력하시면 저장된 연습 기록을 불러옵니다.")
+        style.callout("💡 스피치 종류를 입력하시면 저장된 연습 기록을 불러옵니다.")
     else:
         scripts_list = db.list_scripts(user_case_search)
         
         if not scripts_list:
             st.warning("아직 연습 기록이 없어요")
         else:
-            selected_script_item = st.selectbox(
-                "대본 선택",
-                scripts_list,
-                format_func=lambda item: item.get("text", str(item)) if isinstance(item, dict) else str(item)
-            )
-            
-            if isinstance(selected_script_item, dict):
-                target_script_id = selected_script_item.get("script_id")
-            else:
-                target_script_id = selected_script_item
+            with st.container(key="card_history_select"):
+                selected_script_item = st.selectbox(
+                    "대본 선택",
+                    scripts_list,
+                    format_func=lambda item: item.get("text", str(item)) if isinstance(item, dict) else str(item)
+                )
+                
+                if isinstance(selected_script_item, dict):
+                    target_script_id = selected_script_item.get("script_id")
+                else:
+                    target_script_id = selected_script_item
 
-            rows = db.get_attempts(user_case_search, target_script_id)
+                rows = db.get_attempts(user_case_search, target_script_id)
             
             if not rows:
                 st.warning("아직 연습 기록이 없어요")
@@ -305,48 +311,52 @@ with tab2:
                 if "round" not in df_attempts.columns:
                     df_attempts["round"] = range(1, len(df_attempts) + 1)
 
-                if len(rows) >= 2:
-                    try:
-                        st.success(db.change_sentence(rows[-2], rows[-1]))
-                    except Exception:
-                        pass
-
-                st.subheader("📊 회차별 변화 추이")
-                col_c1, col_c2 = st.columns(2)
-                
-                with col_c1:
-                    st.markdown("**발음 점수**")
-                    try:
-                        chart_score = charts.history_chart(df_attempts, x="round", y="score", y_title="발음 점수")
-                        st.altair_chart(chart_score, use_container_width=True)
-                    except Exception:
-                        score_col = "score" if "score" in df_attempts.columns else df_attempts.columns[0]
-                        st.line_chart(df_attempts.set_index("round")[[score_col]])
-                
-                with col_c2:
-                    st.markdown("**말하기 속도 (음절/초)**")
-                    speed_col = "syl_per_s" if "syl_per_s" in df_attempts.columns else ("speed" if "speed" in df_attempts.columns else None)
-                    if speed_col:
+                # 📦 카드 2: 회차별 변화 추이 그래프
+                with st.container(key="card_history_chart"):
+                    st.subheader("📊 회차별 변화 추이")
+                    
+                    if len(rows) >= 2:
                         try:
-                            chart_speed = charts.history_chart(df_attempts, x="round", y=speed_col, y_title="말하기 속도")
-                            st.altair_chart(chart_speed, use_container_width=True)
+                            st.success(db.change_sentence(rows[-2], rows[-1]))
                         except Exception:
-                            st.line_chart(df_attempts.set_index("round")[[speed_col]])
+                            pass
 
-                st.divider()
+                    col_c1, col_c2 = st.columns(2)
+                    
+                    with col_c1:
+                        # 💡 st.markdown("**발음 점수**") 중복 텍스트 제거 -> 그래프에만 깔끔하게 표시
+                        try:
+                            chart_score = charts.history_chart(df_attempts, x="round", y="score", y_title="발음 점수")
+                            st.altair_chart(chart_score, use_container_width=True)
+                        except Exception:
+                            score_col = "score" if "score" in df_attempts.columns else df_attempts.columns[0]
+                            st.line_chart(df_attempts.set_index("round")[[score_col]])
+                    
+                    with col_c2:
+                        # 💡 st.markdown("**말하기 속도...**") 중복 텍스트 제거 -> 그래프에만 깔끔하게 표시
+                        speed_col = "syl_per_s" if "syl_per_s" in df_attempts.columns else ("speed" if "speed" in df_attempts.columns else None)
+                        if speed_col:
+                            try:
+                                chart_speed = charts.history_chart(df_attempts, x="round", y=speed_col, y_title="말하기 속도")
+                                st.altair_chart(chart_speed, use_container_width=True)
+                            except Exception:
+                                st.line_chart(df_attempts.set_index("round")[[speed_col]])
 
-                st.subheader("🔍 회차별 상세 보기 및 다시 듣기")
-                attempt_labels = [f"{r.get('round', i+1)}회차 ({r.get('created_at', '')})" for i, r in enumerate(rows)]
-                selected_idx = st.selectbox("회차 선택", range(len(rows)), format_func=lambda i: attempt_labels[i])
-                
-                selected_row = rows[selected_idx]
-                
-                score_val = selected_row.get("score", 0)
-                speed_val = selected_row.get("syl_per_s", selected_row.get("speed", 0))
-                st.write(f"**선택 회차 발음 점수:** {score_val}점 / **속도:** {speed_val} 음절/초")
+                # 📦 카드 3: 회차별 상세보기 및 다시 듣기
+                with st.container(key="card_history_detail"):
+                    st.subheader("🔍 회차별 상세 보기 및 다시 듣기")
+                    attempt_labels = [f"{r.get('round', i+1)}회차 ({r.get('created_at', '')})" for i, r in enumerate(rows)]
+                    selected_idx = st.selectbox("회차 선택", range(len(rows)), format_func=lambda i: attempt_labels[i])
+                    
+                    selected_row = rows[selected_idx]
+                    
+                    score_val = selected_row.get("score", 0)
+                    speed_val = selected_row.get("syl_per_s", selected_row.get("speed", 0))
+                    
+                    style.callout(f"<b>선택 회차 발음 점수:</b> {score_val}점 / <b>속도:</b> {speed_val} 음절/초")
 
-                audio_path_val = selected_row.get("audio_path", selected_row.get("audio", ""))
-                if audio_path_val and os.path.exists(audio_path_val):
-                    st.audio(audio_path_val)
-                else:
-                    st.caption("🔊 녹음 파일 경로를 찾을 수 없거나 아직 저장되지 않았습니다.")
+                    audio_path_val = selected_row.get("audio_path", selected_row.get("audio", ""))
+                    if audio_path_val and os.path.exists(audio_path_val):
+                        st.audio(audio_path_val)
+                    else:
+                        style.muted("🔊 녹음 파일 경로를 찾을 수 없거나 아직 저장되지 않았습니다.")
