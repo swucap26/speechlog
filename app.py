@@ -35,15 +35,25 @@ st.set_page_config(page_title="스피치로그 (SpeechLog)", layout="centered")
 st.title("🎤 스피치로그 (SpeechLog)")
 
 # 탭 구성
+st.markdown("""
+<style>
+.stTabs [data-baseweb="tab"] { font-size: 1.3rem; padding: 14px 28px; }
+.stTabs [aria-selected="true"] { background-color: #FDE8E8; border-radius: 8px; }
+</style>
+""", unsafe_allow_html=True)
 tab1, tab2 = st.tabs(["🎙️ 연습", "📈 내 기록"])
 
 # ==========================================
 # TAB 1: 연습
 # ==========================================
 with tab1:
-    st.subheader("1. 사용자 정보 및 대본 선택")
+    st.subheader("1. 연습 정보 입력")
 
-    user_case = st.text_input("스피치 종류", placeholder="종류를 입력하세요 (예: 00강의, 00회사 면접)")
+    user_case = st.text_input(
+    "스피치 종류(연습 이름)",
+    help="연습 목적을 구분하는 이름",
+    placeholder="예) 00회사 면접, 졸업발표"
+)
 
     # scripts.csv에서 대본 목록 읽어오기
     script_options = {"직접 입력": ""}
@@ -89,10 +99,10 @@ with tab1:
     st.subheader("2. 목표 시간 설정 (선택)")
     target_time_s = st.number_input("목표 발표 시간 (초)", min_value=0.0, value=0.0, step=1.0, help="0초 설정 시 제한 없음")
 
-    # 페이스메이커 기능
+    # 대본 리드 연습 기능
     if target_time_s > 0 and script_text.strip():
-        with st.expander("페이스메이커로 연습하기"):
-            st.info("💡 **사용 순서 안내:** 페이스메이커 시작 → 동시에 아래 녹음 시작")
+        with st.expander("대본 리드 연습하기"):
+            st.info("💡 **사용 순서 안내:** 대본 리드 연습 시작 → 동시에 아래 녹음 시작")
             try:
                 components.html(pacemaker_html(script_text, target_time_s), height=320, scrolling=True)
             except ValueError as e:
@@ -242,6 +252,9 @@ with tab1:
             f"<div style='background-color: #f9f9f9; padding: 15px; border-radius: 8px;'>{highlighted_script}</div>",
             unsafe_allow_html=True
         )
+
+        with st.expander("왜 빨간색인가요?"):
+            st.write("두 AI 모델이 모두 이 음절을 대본과 다르게 들었습니다.")
 
         st.subheader("🔊 음량(소리 크기) 변화 그래프")
         try:

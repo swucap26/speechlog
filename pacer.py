@@ -1,7 +1,7 @@
 # 파일: pacer.py
 # 역할: 목표 발표 시간 및 대본 글자 수 기반 권장 말하기 속도 가이드 HTML 생성
 
-"""스피치로그 가상 페이스메이커 (v3)
+"""스피치로그 가상 대본 리드 연습 (v3)
 
 사용법 (app.py는 기존 코드 그대로):
     components.html(pacemaker_html(script, target), height=320, scrolling=True)
@@ -24,7 +24,7 @@ _HANGUL = re.compile(r"[가-힣]")
 
 def pacemaker_html(script: str, target: float, pause: float = 1.0, **_ignored) -> str:
     if not script or not _HANGUL.search(script):
-        raise ValueError("대본에 한글이 없어 페이스메이커를 만들 수 없습니다.")
+        raise ValueError("대본에 한글이 없어 대본 리드 연습를 만들 수 없습니다.")
     try:
         target = float(target)
     except (TypeError, ValueError):
