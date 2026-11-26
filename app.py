@@ -33,6 +33,7 @@ warm_up()
 # ==========================================
 st.set_page_config(page_title="스피치로그 (SpeechLog)", layout="centered")
 st.title("🎤 스피치로그 (SpeechLog)")
+st.info("첫 접속 시 서버 준비로 10~20초 정도 소요될 수 있습니다. 잠시만 기다려 주세요.")
 
 # 탭 구성
 st.markdown("""
