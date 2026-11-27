@@ -17,7 +17,7 @@ from pacer import pacemaker_html
 import analysis
 import db
 import charts
-from messages import score_message, speed_message, pause_message, target_gap_message, NOTES
+from messages import score_message, speed_message, pause_message, target_gap_message, NOTES, score_chip, speed_chip
 
 # 앱 시작 시 DB 초기화
 db.init_db()
@@ -200,15 +200,13 @@ with tab1:
         ttime = st.session_state.get("target_time_s", target_time_s)
 
         st.divider()
-        st.header(f"📊 {ucase} 의 분석 결과")
+        st.subheader(f"📊 {ucase} 의 분석 결과")
 
         col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("발음 점수", f"{res.get('score')}점")
-        with col2:
-            st.metric("말하기 속도", f"{res.get('syl_per_s')} 음절/초")
-        with col3:
-            st.metric("쉼 횟수", f"{res.get('pause_count')} 회")
+        col1.metric("발음 점수", f"{res.get('score')}점")
+        col2.metric("말하기 속도 (음절/초)", f"{res.get('syl_per_s')}")
+        col3.metric("쉬는 구간", f"{res.get('pause_count')}회")
+        style.chips(score_chip(res.get("score")), speed_chip(res.get("syl_per_s")))
 
         st.write(score_message(res.get("score")))
         st.write(speed_message(res.get("syl_per_s")))
@@ -226,8 +224,8 @@ with tab1:
                 my_rate = res.get("syl_per_s", res.get("artic_rate", 0))
                 mean_rate = ref.get("rate_mean", ref.get("artic_rate_mean", 0))
 
-                st.write(f"내 발음 점수 {my_score}점 / 평균 {mean_score:.0f}점")
-                st.write(f"내 속도 {my_rate:.1f} 음절/초 / 평균 {mean_rate:.1f}, 일반 5~7")
+                style.chips((f"내 점수 {my_score}점 · 평균 {mean_score:.0f}점", ""),
+                            (f"내 속도 {my_rate:.1f} · 일반 5~7", ""))
                 st.caption("※ 팀 3명이 바르게 읽은 녹음 기준입니다. 목소리 크기는 마이크마다 달라 비교하지 않습니다.")
             except Exception:
                 pass
@@ -247,28 +245,28 @@ with tab1:
             st.markdown("**대본:** " + stext)
             st.markdown("**이렇게 들렸어요:** " + main_text)
             st.write("")
+        with st.container(key="card_check"):
+            st.subheader("📝 대본 발음점검", help="두 AI 모델 모두 빨간 부분을 대본과 다르게 들었습니다.")
+            highlighted_script = ""
+            for char, is_bad in res.get('marked', []):
+                if is_bad:
+                    highlighted_script += f"<span style='color: red; font-weight: bold; text-decoration: underline;'>{char}</span>"
+                else:
+                    highlighted_script += f"<span style='color: black;'>{char}</span>"
 
-        st.subheader("📝 대본 발음점검", help="두 AI 모델 모두 빨간 부분을 대본과 다르게 들었습니다.")
-        highlighted_script = ""
-        for char, is_bad in res.get('marked', []):
-            if is_bad:
-                highlighted_script += f"<span style='color: red; font-weight: bold; text-decoration: underline;'>{char}</span>"
-            else:
-                highlighted_script += f"<span style='color: black;'>{char}</span>"
-
-        st.markdown(
-            f"<div style='background-color: #f9f9f9; padding: 15px; border-radius: 8px;'>{highlighted_script}</div>",
-            unsafe_allow_html=True
-        )
-
-        st.subheader("🔊 음량(소리 크기) 변화 그래프")
-        try:
-            st.altair_chart(
-                charts.volume_chart(res.get("db", []), res.get("pauses", [])), 
-                use_container_width=True
+            st.markdown(
+                f"<div style='background-color: #f9f9f9; padding: 15px; border-radius: 8px;'>{highlighted_script}</div>",
+                unsafe_allow_html=True
             )
-        except Exception:
-            st.line_chart(res.get("db", []))
+        with st.container(key="card_volume"):
+            st.subheader("🔊 음량(소리 크기) 변화 그래프")
+            try:
+                st.altair_chart(
+                    charts.volume_chart(res.get("db", []), res.get("pauses", [])), 
+                    use_container_width=True
+                )
+            except Exception:
+                st.line_chart(res.get("db", []))
 
         st.divider()
         for note in NOTES:

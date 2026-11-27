@@ -51,3 +51,22 @@ NOTES = [
     "💡 빨간색 글자는 두 모델에게 대본과 다르게 들린 부분입니다. 이 부분을 천천히 다시 연습해 보세요.",
     "💡 녹음 마이크 성능이나 주변 소음에 따라 음량(dB) 측정 결과는 달라질 수 있습니다. 숫자보다 소리가 커지고 작아지는 흐름을 참고하세요."
 ]
+
+def score_chip(score):
+    if score is None:
+        return ("점수 없음", "")
+    if score >= 90:
+        return ("발음 좋음", "ok")
+    if score >= 75:
+        return ("발음 보통", "warn")
+    return ("발음 연습 필요", "bad")
+
+
+def speed_chip(syl_per_s):
+    if syl_per_s is None:
+        return ("속도 없음", "")
+    if syl_per_s < 5.0:
+        return ("속도 느린 편", "warn")
+    if syl_per_s > 7.0:
+        return ("속도 빠른 편", "warn")
+    return ("속도 적정", "ok")
