@@ -234,11 +234,9 @@ with tab1:
         if main_text:
             st.markdown("**대본:** " + stext)
             st.markdown("**이렇게 들렸어요:** " + main_text)
-            if "pron" in res:
-                st.markdown("**발음 기준 대본:** " + str(res["pron"]))
             st.write("")
 
-        st.subheader("📝 대본 발음점검")
+        st.subheader("📝 대본 발음점검", help="두 AI 모델 모두 빨간 부분을 대본과 다르게 들었습니다.")
         highlighted_script = ""
         for char, is_bad in res.get('marked', []):
             if is_bad:
