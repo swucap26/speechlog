@@ -284,12 +284,32 @@ with tab1:
 with tab2:
     st.header("📈 내 기록 (회차별 스피치 분석)")
 
-    user_case_search = st.text_input("조회할 스피치 종류 입력", key="search_user_input")
+    if "auth_user" not in st.session_state:
+        st.session_state["auth_user"] = None
 
-    if not user_case_search.strip():
-        st.info("💡 스피치 종류를 입력하시면 저장된 연습 기록을 불러옵니다.")
+    if st.session_state["auth_user"] is None:
+        input_name = st.text_input("스피치 종류(연습 이름)", key="history_user_input").strip()
+        input_pin = st.text_input("PIN 번호 (숫자 4자리)", type="password", max_chars=4, key="history_pin_input")
+
+        if st.button("확인", key="history_login_btn"):
+            if not input_name:
+                st.warning("스피치 종류(연습 이름)를 입력해 주세요.")
+            elif len(input_pin) != 4 or not input_pin.isdigit():
+                st.warning("PIN 번호는 숫자 4자리로 입력해 주세요.")
+            else:
+                with db._conn() as conn:
+                    is_valid = db.check_or_register(conn, input_name, input_pin)
+                if is_valid:
+                    st.session_state["auth_user"] = input_name
+                    st.rerun()
+                else:
+                    st.error("PIN 번호가 일치하지 않습니다.")
     else:
-        scripts_list = db.list_scripts(user_case_search)
+        if st.button("로그아웃", key="history_logout_btn"):
+            st.session_state["auth_user"] = None
+            st.rerun()
+        
+        scripts_list = db.list_scripts(st.session_state["auth_user"])
         
         if not scripts_list:
             st.warning("아직 연습 기록이 없어요")
@@ -305,7 +325,7 @@ with tab2:
             else:
                 target_script_id = selected_script_item
 
-            rows = db.get_attempts(user_case_search, target_script_id)
+            rows = db.get_attempts(st.session_state["auth_user"], target_script_id)
             
             if not rows:
                 st.warning("아직 연습 기록이 없어요")
