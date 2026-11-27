@@ -315,56 +315,53 @@ with tab2:
                 st.warning("아직 연습 기록이 없어요")
             else:
                 df_attempts = pd.DataFrame(rows)
-                
                 if "round" not in df_attempts.columns:
                     df_attempts["round"] = range(1, len(df_attempts) + 1)
 
-                # 📦 카드 2: 회차별 변화 추이 그래프
-                with st.container(key="card_history_chart"):
-                    st.subheader("📊 회차별 변화 추이")
-                    
-                    if len(rows) >= 2:
-                        try:
-                            st.success(db.change_sentence(rows[-2], rows[-1]))
-                        except Exception:
-                            pass
+                last = rows[-1]
+                prev = rows[-2] if len(rows) >= 2 else None
+                last_score = last.get("score") or 0
+                m1, m2, m3 = st.columns(3)
+                m1.metric("최근 점수", f"{last_score:.1f}")
+                m2.metric("연습 횟수", f"{len(rows)}회")
+                if prev is None:
+                    m3.metric("지난 회차 대비", "-")
+                else:
+                    m3.metric("지난 회차 대비", f"{last_score - (prev.get('score') or 0):+.1f}점")
 
-                    col_c1, col_c2 = st.columns(2)
-                    
-                    with col_c1:
-                        # 💡 st.markdown("**발음 점수**") 중복 텍스트 제거 -> 그래프에만 깔끔하게 표시
-                        try:
-                            chart_score = charts.history_chart(df_attempts, x="round", y="score", y_title="발음 점수")
-                            st.altair_chart(chart_score, use_container_width=True)
-                        except Exception:
-                            score_col = "score" if "score" in df_attempts.columns else df_attempts.columns[0]
-                            st.line_chart(df_attempts.set_index("round")[[score_col]])
-                    
-                    with col_c2:
-                        # 💡 st.markdown("**말하기 속도...**") 중복 텍스트 제거 -> 그래프에만 깔끔하게 표시
-                        speed_col = "syl_per_s" if "syl_per_s" in df_attempts.columns else ("speed" if "speed" in df_attempts.columns else None)
-                        if speed_col:
-                            try:
-                                chart_speed = charts.history_chart(df_attempts, x="round", y=speed_col, y_title="말하기 속도")
-                                st.altair_chart(chart_speed, use_container_width=True)
-                            except Exception:
-                                st.line_chart(df_attempts.set_index("round")[[speed_col]])
-
-                # 📦 카드 3: 회차별 상세보기 및 다시 듣기
-                with st.container(key="card_history_detail"):
-                    st.subheader("🔍 회차별 상세 보기 및 다시 듣기")
-                    attempt_labels = [f"{r.get('round', i+1)}회차 ({to_local(r.get('created_at', ''))})" for i, r in enumerate(rows)]
-                    selected_idx = st.selectbox("회차 선택", range(len(rows)), format_func=lambda i: attempt_labels[i])
-                    
-                    selected_row = rows[selected_idx]
-                    
-                    score_val = selected_row.get("score", 0)
-                    speed_val = selected_row.get("syl_per_s", selected_row.get("speed", 0))
-                    
-                    style.callout(f"<b>선택 회차 발음 점수:</b> {score_val}점 / <b>속도:</b> {speed_val} 음절/초")
-
-                    audio_path_val = selected_row.get("audio_path", selected_row.get("audio", ""))
-                    if audio_path_val and os.path.exists(audio_path_val):
-                        st.audio(audio_path_val)
+                with st.container(key="card_trend"):
+                    st.subheader("📊 회차별 변화")
+                    if len(rows) < 2:
+                        style.callout("2번 이상 연습하면 변화가 보여요.")
                     else:
-                        style.muted("🔊 녹음 파일 경로를 찾을 수 없거나 아직 저장되지 않았습니다.")
+                        col_c1, col_c2 = st.columns(2)
+                        with col_c1:
+                            try:
+                                st.altair_chart(charts.history_chart(df_attempts, x="round", y="score", y_title="발음 점수"),
+                                                use_container_width=True)
+                            except Exception:
+                                st.line_chart(df_attempts.set_index("round")[["score"]])
+                        with col_c2:
+                            speed_col = "syl_per_s" if "syl_per_s" in df_attempts.columns else None
+                            if speed_col:
+                                try:
+                                    st.altair_chart(charts.history_chart(df_attempts, x="round", y=speed_col, y_title="말하기 속도"),
+                                                    use_container_width=True)
+                                except Exception:
+                                    st.line_chart(df_attempts.set_index("round")[[speed_col]])
+
+                st.subheader("연습 기록")
+                for r in reversed(rows):
+                    with st.container(key=f"card_attempt_{r.get('round')}"):
+                        st.markdown(f"**{r.get('round')}회차**")
+                        style.muted(to_local(r.get("created_at", "")))
+                        sc = r.get("score") or 0
+                        sp = r.get("syl_per_s") or 0
+                        style.chips((f"발음 {sc:.0f}점", score_chip(sc)[1]),
+                                    (f"{sp:.1f}음절/초", speed_chip(sp)[1]),
+                                    (f"쉬는 구간 {r.get('pause_count') or 0}회", ""))
+                        audio_path_val = r.get("audio_path") or ""
+                        if audio_path_val and os.path.exists(audio_path_val):
+                            st.audio(audio_path_val)
+                        else:
+                            style.muted("⚠️ 녹음 파일을 찾을 수 없어요.")
