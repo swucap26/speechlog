@@ -192,12 +192,12 @@ with tab1:
         with col1:
             st.metric("발음 점수", f"{res.get('score')}점")
         with col2:
-            st.metric("말하기 속도", f"{res.get('syl_per_s')} 음절/초")
+            st.metric("말하기 속도", f"{res.get('artic_rate')} 음절/초")
         with col3:
             st.metric("쉼 횟수", f"{res.get('pause_count')} 회")
 
         st.write(score_message(res.get("score")))
-        st.write(speed_message(res.get("syl_per_s")))
+        st.write(speed_message(res.get("artic_rate")))
         st.write(pause_message(res.get("pause_count"), res.get("pause_total_s")))
 
         # ★ C5-6: 팀 평균 비교 영역 추가 ★
@@ -213,7 +213,7 @@ with tab1:
                 my_score = res.get("score", 0)
                 mean_score = ref.get("score_mean", 0)
                 
-                my_rate = res.get("syl_per_s", res.get("artic_rate", 0))
+                my_rate = res.get("artic_rate") or res.get("syl_per_s", 0)
                 mean_rate = ref.get("rate_mean", ref.get("artic_rate_mean", 0))
 
                 st.write(f"내 발음 점수 {my_score}점 / 평균 {mean_score:.0f}점")
