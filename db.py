@@ -14,7 +14,7 @@ C의 app.py는 이 파일의 함수만 부르면 돼요. SQL을 직접 쓸 필�
 import json
 import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 DB_PATH = "speechlog.db"          # 실행하는 폴더에 생겨요. .gitignore에 꼭 넣으세요 (GitHub에 올리지 않기)
 
@@ -54,7 +54,7 @@ def _conn():
 
 
 def _now():
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def init_db():

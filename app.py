@@ -5,6 +5,8 @@ import os
 import re
 import json
 import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import tempfile
 import pandas as pd
 import streamlit as st
@@ -31,6 +33,16 @@ warm_up()
 # ==========================================
 # 레이아웃 및 스타일 구성 (U5-1 로고 및 타이틀)
 # ==========================================
+def to_local(created_at):
+    """저장된 시각(UTC)을 사용자 브라우저 시간대의 '연-월-일 시:분'으로 바꿔요."""
+    try:
+        tz_name = getattr(st.context, "timezone", None) or "Asia/Seoul"
+        dt = datetime.fromisoformat(created_at)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return str(created_at)
 st.set_page_config(page_title="스피치로그 (SpeechLog)", page_icon="assets/speechlog_logo.png", layout="centered")
 style.apply_style()
 
@@ -157,7 +169,7 @@ with tab1:
                 st.stop()
 
             os.makedirs("recordings", exist_ok=True)
-            timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             saved_audio_name = f"{user_case}_{timestamp_str}.wav"
             saved_audio_path = os.path.join("recordings", saved_audio_name)
             
@@ -343,7 +355,7 @@ with tab2:
                 # 📦 카드 3: 회차별 상세보기 및 다시 듣기
                 with st.container(key="card_history_detail"):
                     st.subheader("🔍 회차별 상세 보기 및 다시 듣기")
-                    attempt_labels = [f"{r.get('round', i+1)}회차 ({r.get('created_at', '')})" for i, r in enumerate(rows)]
+                    attempt_labels = [f"{r.get('round', i+1)}회차 ({to_local(r.get('created_at', ''))})" for i, r in enumerate(rows)]
                     selected_idx = st.selectbox("회차 선택", range(len(rows)), format_func=lambda i: attempt_labels[i])
                     
                     selected_row = rows[selected_idx]
