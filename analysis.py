@@ -471,8 +471,10 @@ def analyze(wav_path, script, models=("kresnik", "kkonjeong")):
     dur = len(trimmed) / SR
     n_syl = count_syllables(script)
     db, pauses, mean_db, std_db = volume_and_pauses(trimmed)
+
+    pauses, edge_total = trim_edge_pauses(pauses, dur)
     pause_total = round(sum(p["end"] - p["start"] for p in pauses), 2)
-    speak_time = dur - pause_total
+    speak_time = dur - edge_total - pause_total
 
     texts = recognize(wav, models)
     pron = to_pron(script)
@@ -541,3 +543,16 @@ FILLERS = {'어', '음', '아', '으', '엄', '엉', '응', '앙'}
 def find_fillers(text: str):
     '''인식된 문장에서 추임새로 적힌 단어를 찾아 목록으로 반환'''
     return [w for w in text.split() if w in FILLERS]
+
+def trim_edge_pauses(pauses, duration_s, edge=0.5):
+    """녹음 맨 앞(말하기 전)과 맨 뒤(말 끝난 뒤)의 조용한 구간은 쉼에서 제외
+    반환: (말 중간의 쉼 목록, 제외한 가장자리 조용한 시간 합계)"""
+    kept = []
+    edge_total = 0.0
+    for p in pauses:
+        start, end = p["start"], p["end"]
+        if start <= edge or end >= duration_s - edge:
+            edge_total += end - start
+        else:
+            kept.append(p)
+    return kept, round(edge_total, 2)
